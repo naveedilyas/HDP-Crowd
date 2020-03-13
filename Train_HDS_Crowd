@@ -1,0 +1,123 @@
+import torch
+from torch import nn
+from torch import optim
+from torch.utils import data
+#from data_HDS import TrainDataset,TestDataset
+from data_HDS import TrainDataset,TestDataset
+#from model_HDS import Model
+#from LeNet import *
+from dsnet import DenseScaleNet
+#from mcnn_model import *
+#from csrnet_model import *
+#from denseaspp_model import *
+#from LeNet import *
+import os
+
+BATCH_SIZE=4
+end_epoch=50
+load_checkpoint=False
+save_path='/home/naveedilyas/tech1/ShanghaiTech_Crowd_Counting_Dataset/' #path to save checkpoint
+
+train_dataset=TrainDataset()
+train_loader=data.DataLoader(train_dataset,batch_size=BATCH_SIZE,shuffle=True)
+test_dataset=TestDataset()
+test_loader=data.DataLoader(test_dataset,batch_size=1,shuffle=False)
+
+
+device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#model=CSRNet().to(device)
+#model=Model().to(device)
+#model=MCNN().to(device)
+model=DenseScaleNet().to(device)
+criterion=nn.MSELoss(size_average=False).to(device)
+optimizer=optim.Adam(model.parameters(),lr=1e-4)
+
+
+##### Load Checkpoint  ########################
+if load_checkpoint:
+    checkpoint=torch.load(os.path.join(save_path,'checkpoint_pth'))
+    model.load_state_dict(checkpoint['model'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+
+
+    best_mae=torch.load(os.path.join(save_path,'checkpoint_best_pth'))['mae']
+    start_epoch=checkpoint['epoch']+1
+else:
+    best_mae=999999
+    start_epoch=0
+
+################################################                      ################################################################
+
+
+########################### Training Loop ################################### ######################################################
+
+for epoch in range(start_epoch,end_epoch):
+    mae_train,mse_train,loss_avg=0.0,0.0,0
+    for i,(images,labels) in enumerate(train_loader):
+        images=images.to(device)
+        print('Shape of input image',images.shape)
+        labels=labels.to(device)
+        print('Shape of labels',labels.shape)
+        outputs=model(images)
+        print('Shape of output',outputs.shape)
+        print('output:{:.2f} label:{:.2f}'.format(outputs.sum().item()/BATCH_SIZE,labels.sum().item()/BATCH_SIZE))
+
+        loss=criterion(outputs,labels)/BATCH_SIZE
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        loss_avg+=loss.item()
+        mae_train+=torch.abs(outputs.sum()-labels.sum()).item()
+        mse_train+=((outputs.sum()-labels.sum())**2).item()
+        print("Epoch:{},Step:{},Loss:{:.4f}({:.4f})".format(epoch,i,loss.item(),loss_avg/(i+1)))
+    #mae_train /= len(train_loader)
+    #print (len(train_loader))
+    #mse_train/=len(train_loader)
+    #mse=mse*0.5
+    #print ('Epoch:',epoch,'Train_MAE:',mae_train,'Train_MSE:',mse_train)
+
+
+
+############################################# Evaluation ####################################################################################
+
+model.eval()
+with torch.no_grad():
+    mae,mse,count,mae_train,mse_train=0.0,0.0,0.0,0.0,0
+    for i,(images,labels) in enumerate(test_loader):
+        images=images.to(device)
+        labels=labels.to(device)
+
+        predict=model(images)
+
+        print('predict:{:.2f} lable:{:.2f}'.format(predict.sum().item(),labels.sum().item()))
+        mae+=torch.abs(predict.sum()-labels.sum()).item()
+        mse+=((predict.sum()-labels.sum())**2).item()
+        count+=1
+
+    #mae/=count
+    #mse/=count
+    mae_train /= len(train_loader)
+    mse_train/=len(train_loader)
+    mae/=len(test_loader)
+    mse/=len(test_loader)
+    #mse=mse*0.5
+    print('Epoch:',epoch,'MAE:',mae,'MSE',mse)
+    #eval_logger.scalar_summary('MAE', mae, epoch)
+    #eval_logger.scalar_summary('MSE', mse, epoch)
+
+        # save the latest and the best checkpoint
+    state = {'epoch': epoch, 'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'mae': mae,'mse': mse}
+    torch.save(state, os.path.join(save_path, 'checkpoint_latest.pth'))
+
+    if mae < best_mae:
+        best_mae = mae
+        torch.save(state, os.path.join(save_path, 'checkpoint_best.pth'))
+    #model.train()
+
+
+
+
+
+
