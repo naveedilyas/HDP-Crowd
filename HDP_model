@@ -20,7 +20,29 @@ class DDCB(nn.Module):
         output = self.conv4(x3)
         return output
 
+class CAM_Module(nn.Module):
+    def __init__(self, in_dim):
+        super(CAM_Module, self).__init__()
+        self.chanel_in = in_dim
 
+
+        self.gamma = nn.Parameter(torch.zeros(1))
+        self.softmax  = nn.Softmax(dim=-1)
+    def forward(self,x):
+        m_batchsize, C, height, width = x.size()
+        proj_query = x.view(m_batchsize, C, -1)
+        proj_key = x.view(m_batchsize, C, -1).permute(0, 2, 1)
+        energy = torch.bmm(proj_query, proj_key)
+        energy_new = torch.max(energy, -1, keepdim=True)[0].expand_as(energy)-energy
+        attention = self.softmax(energy_new)
+        proj_value = x.view(m_batchsize, C, -1)
+
+        out = torch.bmm(attention, proj_value)
+        out = out.view(m_batchsize, C, height, width)
+
+        out = self.gamma*out + x
+        return out
+        
 class DenseScaleNet(nn.Module):
     def __init__(self, load_model=''):
         super(DenseScaleNet, self).__init__()
@@ -31,6 +53,7 @@ class DenseScaleNet(nn.Module):
         self.DDCB2 = DDCB(512)
         self.DDCB3 = DDCB(512)
         self.DDCB4 = DDCB(512)
+        self.Attention = CAM_Module(512)
         self.output_layers = nn.Sequential(nn.Conv2d(512, 128, 3, padding=1), nn.ReLU(True),
                                            nn.Conv2d(128, 64, 3, padding=1), nn.ReLU(True), nn.Conv2d(64, 1, 1))
         self._initialize_weights()
@@ -45,7 +68,8 @@ class DenseScaleNet(nn.Module):
         x3 = x3_raw + x2_raw + x1_raw + x
         x4_raw=self.DDCB4(x3)
         x4 = x4_raw + x3_raw + x2_raw + x1_raw + x
-        output = self.output_layers(x4)
+        x5 = self.Attention(x4)
+        output = self.output_layers(x5)
         return output
 
     def _initialize_weights(self):
