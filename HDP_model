@@ -19,7 +19,7 @@ class DDCB(nn.Module):
         x3 = torch.cat([x, x2_raw, x3_raw], 1)
         output = self.conv4(x3)
         return output
-
+'''
 class CAM_Module(nn.Module):
     def __init__(self, in_dim):
         super(CAM_Module, self).__init__()
@@ -42,6 +42,8 @@ class CAM_Module(nn.Module):
 
         out = self.gamma*out + x
         return out
+'''
+
         
 class DenseScaleNet(nn.Module):
     def __init__(self, load_model=''):
@@ -53,7 +55,6 @@ class DenseScaleNet(nn.Module):
         self.DDCB2 = DDCB(512)
         self.DDCB3 = DDCB(512)
         self.DDCB4 = DDCB(512)
-        self.Attention = CAM_Module(512)
         self.output_layers = nn.Sequential(nn.Conv2d(512, 128, 3, padding=1), nn.ReLU(True),
                                            nn.Conv2d(128, 64, 3, padding=1), nn.ReLU(True), nn.Conv2d(64, 1, 1))
         self._initialize_weights()
@@ -68,8 +69,7 @@ class DenseScaleNet(nn.Module):
         x3 = x3_raw + x2_raw + x1_raw + x
         x4_raw=self.DDCB4(x3)
         x4 = x4_raw + x3_raw + x2_raw + x1_raw + x
-        x5 = self.Attention(x4)
-        output = self.output_layers(x5)
+        output = self.output_layers(x4)
         return output
 
     def _initialize_weights(self):
